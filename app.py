@@ -160,3 +160,5 @@ if st.session_state["historial_respuestas"]:
     for i, (q, r) in enumerate(st.session_state["historial_respuestas"]):
         st.markdown(f"**{i+1}. Pregunta:** {q}")
         st.markdown(f"🧠 {r}")
+
+        st.markdown(f"🧠 {r}")
