@@ -108,7 +108,7 @@ if uploaded_files:
     for archivo in uploaded_files:
         nombre = archivo.name
         texto = extract_text_from_pdf(archivo)
-        st.markdown(f"---
+        st.markdown(f"""---
 ### 📄 Informe para: `{nombre}`")
         st.info(f"📏 Caracteres extraídos: {len(texto)}")
 
@@ -135,7 +135,6 @@ pregunta = st.text_input("Haz una pregunta sobre los artículos analizados:")
 
 if st.button("❓ Responder con IA"):
     if pregunta.strip():
-        contexto = "
 
 contexto = "\n\n".join(st.session_state["analisis_clinicos"].values())
         with st.spinner("Buscando respuesta..."):
