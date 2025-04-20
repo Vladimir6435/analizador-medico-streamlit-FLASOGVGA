@@ -5,18 +5,24 @@ from datetime import datetime
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
 import io
+import tiktoken
 
 # Configuración API moderna
 client = OpenAI(api_key=st.secrets["openai_api_key"])
 
 MAX_CARACTERES_POR_PDF = 70000
 MAX_OUTPUT_TOKENS = 6000
+MAX_INPUT_TOKENS = 120000
 
 if "analisis_clinicos" not in st.session_state:
     st.session_state["analisis_clinicos"] = {}
 
 if "historial_respuestas" not in st.session_state:
     st.session_state["historial_respuestas"] = []
+
+def contar_tokens(texto, modelo="gpt-4-turbo"):
+    enc = tiktoken.encoding_for_model(modelo)
+    return len(enc.encode(texto))
 
 def extract_text_from_pdf(uploaded_file):
     with fitz.open(stream=uploaded_file.read(), filetype="pdf") as doc:
@@ -45,6 +51,10 @@ Tienes a continuación el contenido de un artículo científico extraído de un 
 Por favor, {objetivo_prompt} y genera un informe profesional para revisión por especialistas clínicos. El informe debe estar estructurado, enfocado en evidencia médica clara, y ser útil para discusión académica o aplicación clínica.
 """
 
+    if contar_tokens(prompt) > MAX_INPUT_TOKENS:
+        st.error("⚠️ El contenido del artículo es demasiado extenso para el modelo. Intenta reducir su tamaño.")
+        return "ERROR: Texto muy largo para el modelo."
+
     respuesta = client.chat.completions.create(
         model="gpt-4-turbo",
         messages=[{"role": "user", "content": prompt}],
@@ -72,7 +82,8 @@ def generar_pdf(nombre_archivo, contenido, seccion):
     y -= 30
 
     c.setFont("Helvetica", 10)
-    for linea in contenido.split('\n'):
+    for linea in contenido.split('
+'):
         for fragmento in [linea[i:i+100] for i in range(0, len(linea), 100)]:
             if y < 40:
                 c.showPage()
@@ -97,7 +108,8 @@ if uploaded_files:
     for archivo in uploaded_files:
         nombre = archivo.name
         texto = extract_text_from_pdf(archivo)
-        st.markdown(f"---\n### 📄 Informe para: `{nombre}`")
+        st.markdown(f"---
+### 📄 Informe para: `{nombre}`")
         st.info(f"📏 Caracteres extraídos: {len(texto)}")
 
         if len(texto) > MAX_CARACTERES_POR_PDF:
@@ -123,7 +135,9 @@ pregunta = st.text_input("Haz una pregunta sobre los artículos analizados:")
 
 if st.button("❓ Responder con IA"):
     if pregunta.strip():
-        contexto = "\n\n".join(st.session_state["analisis_clinicos"].values())
+        contexto = "
+
+".join(st.session_state["analisis_clinicos"].values())
         with st.spinner("Buscando respuesta..."):
             prompt = f"""Actúa como médico materno-fetal. Usa el siguiente contexto clínico para responder:
 
