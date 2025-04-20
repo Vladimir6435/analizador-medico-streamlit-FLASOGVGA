@@ -1,9 +1,12 @@
 import streamlit as st
 import fitz  # PyMuPDF
-from openai import OpenAI  # Nuevo SDK
+from openai import OpenAI
 
-# Crear cliente de OpenAI con tu API key
+# Crear cliente con tu clave API (desde secrets)
 client = OpenAI(api_key=st.secrets["openai_api_key"])
+
+# Limitar texto para evitar errores por exceso de tokens
+MAX_CARACTERES = 12000  # ~3000 tokens
 
 def extract_text_from_pdf(uploaded_file):
     with fitz.open(stream=uploaded_file.read(), filetype="pdf") as doc:
@@ -57,33 +60,38 @@ PREGUNTA: {pregunta}
     )
     return respuesta.choices[0].message.content
 
-# Interfaz Streamlit
+# Interfaz de usuario
 st.title("📊 Analizador Médico - Múltiples PDFs + Preguntas")
 
 uploaded_files = st.file_uploader("📄 Sube artículos médicos en PDF", type="pdf", accept_multiple_files=True)
 
+texto_total = ""
+
 if uploaded_files:
     with st.spinner("🔍 Extrayendo texto de los artículos..."):
-        texto_total = ""
         for archivo in uploaded_files:
             texto_total += extract_text_from_pdf(archivo) + "\n\n"
-
         st.success(f"✅ Texto extraído de {len(uploaded_files)} archivos.")
-        if st.button("📑 Generar análisis clínico automático"):
-            with st.spinner("🧠 Analizando con IA..."):
-                resultado = generar_analisis_clinico(texto_total)
-                st.subheader("📝 Informe clínico generado:")
-                st.write(resultado)
-                st.download_button("💾 Descargar informe", resultado, file_name="informe_clinico.txt")
 
-        st.markdown("---")
-        st.subheader("🔎 Haz una pregunta personalizada sobre los artículos")
-        pregunta = st.text_input("Escribe tu pregunta aquí")
-        if st.button("💬 Responder pregunta"):
-            if pregunta.strip() != "":
-                with st.spinner("Pensando como un experto clínico..."):
-                    respuesta = responder_pregunta(texto_total, pregunta)
-                    st.markdown("### ✅ Respuesta basada en los artículos:")
-                    st.write(respuesta)
-            else:
-                st.warning("Por favor escribe una pregunta válida.")
+    if len(texto_total) > MAX_CARACTERES:
+        st.warning("⚠️ El texto fue recortado para ajustarse al límite del modelo.")
+        texto_total = texto_total[:MAX_CARACTERES]
+
+    if st.button("📑 Generar análisis clínico automático"):
+        with st.spinner("🧠 Analizando con IA..."):
+            resultado = generar_analisis_clinico(texto_total)
+            st.subheader("📝 Informe clínico generado:")
+            st.write(resultado)
+            st.download_button("💾 Descargar informe", resultado, file_name="informe_clinico.txt")
+
+    st.markdown("---")
+    st.subheader("🔎 Haz una pregunta personalizada sobre los artículos")
+    pregunta = st.text_input("Escribe tu pregunta aquí")
+    if st.button("💬 Responder pregunta"):
+        if pregunta.strip() != "":
+            with st.spinner("Pensando como un experto clínico..."):
+                respuesta = responder_pregunta(texto_total, pregunta)
+                st.markdown("### ✅ Respuesta basada en los artículos:")
+                st.write(respuesta)
+        else:
+            st.warning("Por favor escribe una pregunta válida.")
