@@ -1,8 +1,9 @@
 import streamlit as st
 import fitz  # PyMuPDF
-import openai
+from openai import OpenAI  # Nuevo SDK
 
-openai.api_key = st.secrets["openai_api_key"]
+# Crear cliente de OpenAI con tu API key
+client = OpenAI(api_key=st.secrets["openai_api_key"])
 
 def extract_text_from_pdf(uploaded_file):
     with fitz.open(stream=uploaded_file.read(), filetype="pdf") as doc:
@@ -28,13 +29,13 @@ Realiza un análisis clínico estructurado:
 
 Usa lenguaje técnico claro dirigido a médicos gineco-obstetras.
 """
-    respuesta = openai.ChatCompletion.create(
+    respuesta = client.chat.completions.create(
         model="gpt-4",
         messages=[{"role": "user", "content": prompt}],
         temperature=0.3,
         max_tokens=2500
     )
-    return respuesta['choices'][0]['message']['content']
+    return respuesta.choices[0].message.content
 
 def responder_pregunta(texto_total, pregunta):
     prompt = f"""
@@ -48,15 +49,15 @@ Responde la siguiente pregunta del usuario de forma clara y con base en la evide
 
 PREGUNTA: {pregunta}
 """
-    respuesta = openai.ChatCompletion.create(
+    respuesta = client.chat.completions.create(
         model="gpt-4",
         messages=[{"role": "user", "content": prompt}],
         temperature=0.3,
         max_tokens=1500
     )
-    return respuesta['choices'][0]['message']['content']
+    return respuesta.choices[0].message.content
 
-# Interfaz de usuario
+# Interfaz Streamlit
 st.title("📊 Analizador Médico - Múltiples PDFs + Preguntas")
 
 uploaded_files = st.file_uploader("📄 Sube artículos médicos en PDF", type="pdf", accept_multiple_files=True)
