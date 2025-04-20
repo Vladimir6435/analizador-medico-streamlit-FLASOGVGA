@@ -109,7 +109,7 @@ if uploaded_files:
         nombre = archivo.name
         texto = extract_text_from_pdf(archivo)
         st.markdown(f"""---
-### 📄 Informe para: `{nombre}`")
+### 📄 Informe para: `{nombre}`""")
         st.info(f"📏 Caracteres extraídos: {len(texto)}")
 
         if len(texto) > MAX_CARACTERES_POR_PDF:
@@ -135,8 +135,9 @@ pregunta = st.text_input("Haz una pregunta sobre los artículos analizados:")
 
 if st.button("❓ Responder con IA"):
     if pregunta.strip():
+        contexto = "
 
-contexto = "\n\n".join(st.session_state["analisis_clinicos"].values())
+".join(st.session_state["analisis_clinicos"].values())
         with st.spinner("Buscando respuesta..."):
             prompt = f"""Actúa como médico materno-fetal. Usa el siguiente contexto clínico para responder:
 
