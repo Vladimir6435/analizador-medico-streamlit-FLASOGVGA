@@ -11,7 +11,7 @@ import tiktoken
 client = OpenAI(api_key=st.secrets["openai_api_key"])
 
 MAX_CARACTERES_POR_PDF = 70000
-MAX_OUTPUT_TOKENS = 6000
+MAX_OUTPUT_TOKENS = 3000
 MAX_INPUT_TOKENS = 120000
 
 if "analisis_clinicos" not in st.session_state:
