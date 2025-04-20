@@ -135,9 +135,9 @@ pregunta = st.text_input("Haz una pregunta sobre los artículos analizados:")
 
 if st.button("❓ Responder con IA"):
     if pregunta.strip():
-        contexto = "
+        contexto = "\n\n".join(st.session_state["analisis_clinicos"].values())
 
-".join(st.session_state["analisis_clinicos"].values())
+
         with st.spinner("Buscando respuesta..."):
             prompt = f"""Actúa como médico materno-fetal. Usa el siguiente contexto clínico para responder:
 
