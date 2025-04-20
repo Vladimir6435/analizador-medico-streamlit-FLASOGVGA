@@ -1,4 +1,4 @@
 streamlit
 openai
 pymupdf
-tiktoken
+reportlab
