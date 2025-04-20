@@ -82,7 +82,8 @@ def generar_pdf(nombre_archivo, contenido, seccion):
     y -= 30
 
     c.setFont("Helvetica", 10)
-    for linea in contenido.split('\n')):
+    for linea in contenido.split('\n'):
+
         for fragmento in [linea[i:i+100] for i in range(0, len(linea), 100)]:
             if y < 40:
                 c.showPage()
@@ -136,7 +137,7 @@ if st.button("❓ Responder con IA"):
     if pregunta.strip():
         contexto = "
 
-".join(st.session_state["analisis_clinicos"].values())
+contexto = "\n\n".join(st.session_state["analisis_clinicos"].values())
         with st.spinner("Buscando respuesta..."):
             prompt = f"""Actúa como médico materno-fetal. Usa el siguiente contexto clínico para responder:
 
