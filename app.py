@@ -1,24 +1,14 @@
 import streamlit as st
 import fitz  # PyMuPDF
-import tiktoken
 from openai import OpenAI
 
-# Cliente OpenAI con clave segura desde Streamlit Cloud
+# Cliente OpenAI
 client = OpenAI(api_key=st.secrets["openai_api_key"])
 
-# Tokenizador GPT-4 Turbo (usamos cl100k_base que es compatible)
-encoding = tiktoken.get_encoding("cl100k_base")
+MAX_OUTPUT_TOKENS = 6000
+MAX_PALABRAS_ENTRADA = 60000  # estimado para no pasar los 100k tokens
 
-# Límite real del modelo gpt-4-turbo (entrada + salida)
-MAX_TOTAL_TOKENS = 128000
-MAX_OUTPUT_TOKENS = 6000  # tokens reservados para respuesta
-MAX_INPUT_TOKENS = MAX_TOTAL_TOKENS - MAX_OUTPUT_TOKENS
-
-# --- Función para contar tokens ---
-def contar_tokens(texto):
-    return len(encoding.encode(texto))
-
-# --- Función para extraer texto de PDF ---
+# --- Extraer texto desde PDF ---
 def extract_text_from_pdf(uploaded_file):
     with fitz.open(stream=uploaded_file.read(), filetype="pdf") as doc:
         text = ""
@@ -26,7 +16,7 @@ def extract_text_from_pdf(uploaded_file):
             text += page.get_text()
     return text
 
-# --- Generar análisis clínico por sección ---
+# --- Análisis clínico IA ---
 def generar_analisis_clinico(texto_total, seccion_objetivo):
     if seccion_objetivo == "Todo el artículo":
         objetivo_prompt = "analiza el artículo completo"
@@ -77,12 +67,12 @@ PREGUNTA: {pregunta}
 st.set_page_config(page_title="FLASOG 2025 - Análisis de Literatura Médica", layout="centered")
 
 st.title("📘 Análisis de Literatura Médica FLASOG 2025")
-st.markdown("### 🧠 IA aplicada al análisis de artículos clínicos extensos")
-st.info("Modelo en uso: gpt-4-turbo · Límite: 128k tokens")
+st.markdown("### 🧠 IA aplicada al análisis clínico de artículos extensos")
+st.info("Modelo en uso: gpt-4-turbo (128k tokens) · Se recorta texto a máx. 60,000 palabras")
 
 uploaded_files = st.file_uploader("📄 Sube uno o más artículos médicos en PDF", type="pdf", accept_multiple_files=True)
 
-seccion_objetivo = st.radio("Selecciona la sección a analizar:",
+seccion_objetivo = st.radio("Selecciona la sección que deseas analizar:",
                             ["Todo el artículo", "Metodología", "Resultados", "Conclusiones"], index=0)
 
 texto_total = ""
@@ -91,31 +81,33 @@ if uploaded_files:
     for archivo in uploaded_files:
         texto_total += extract_text_from_pdf(archivo) + "\n\n"
 
-    token_count = contar_tokens(texto_total)
-    st.info(f"🔢 Tokens estimados: {token_count}")
+    palabras = texto_total.split()
+    num_palabras = len(palabras)
+    st.info(f"📏 Palabras cargadas: {num_palabras}")
 
-    if token_count > MAX_INPUT_TOKENS:
-        st.warning("⚠️ El texto fue recortado para ajustarse al límite del modelo (máx. 100k tokens de entrada).")
-        tokens = encoding.encode(texto_total)
-        texto_total = encoding.decode(tokens[:MAX_INPUT_TOKENS])
-        st.info(f"✂️ Texto recortado a {contar_tokens(texto_total)} tokens")
+    if num_palabras > MAX_PALABRAS_ENTRADA:
+        st.warning("⚠️ El texto fue recortado a 60,000 palabras para evitar errores por exceso de tokens.")
+        palabras = palabras[:MAX_PALABRAS_ENTRADA]
+        texto_total = " ".join(palabras)
+        st.info(f"✂️ Texto recortado a {len(texto_total.split())} palabras.")
 
     if st.button("📑 Generar análisis clínico"):
-        with st.spinner("🧠 Procesando con IA..."):
+        with st.spinner("🧠 Procesando..."):
             resultado = generar_analisis_clinico(texto_total, seccion_objetivo)
             st.subheader("📝 Informe clínico generado:")
             st.write(resultado)
-            st.download_button("💾 Descargar informe", resultado, file_name="informe_clinico.txt")
+            st.download_button("💾 Descargar informe (.txt)", resultado, file_name="informe_clinico.txt")
 
     st.markdown("---")
-    st.subheader("💬 Haz una pregunta personalizada")
+    st.subheader("💬 Haz una pregunta personalizada sobre los artículos")
 
     pregunta = st.text_input("Escribe tu pregunta aquí:")
-    if st.button("❓ Responder"):
+    if st.button("❓ Responder con IA"):
         if pregunta.strip():
-            with st.spinner("💡 Respondiendo..."):
+            with st.spinner("💡 Generando respuesta..."):
                 respuesta = responder_pregunta(texto_total, pregunta)
-                st.markdown("### ✅ Respuesta:")
+                st.markdown("### ✅ Respuesta basada en el contenido:")
                 st.write(respuesta)
         else:
-            st.warning("Escribe una pregunta válida.")
+            st.warning("Por favor, escribe una pregunta válida.")
+
