@@ -51,7 +51,10 @@ Tienes a continuación el contenido de un artículo científico extraído de un 
 Por favor, {objetivo_prompt} y genera un informe profesional para revisión por especialistas clínicos. El informe debe estar estructurado, enfocado en evidencia médica clara, y ser útil para discusión académica o aplicación clínica.
 """
 
-    if contar_tokens(prompt) > MAX_INPUT_TOKENS:
+    n_tokens = contar_tokens(prompt)
+    st.info(f"🧮 Tokens del prompt: {n_tokens}")
+
+    if n_tokens > MAX_INPUT_TOKENS:
         st.error("⚠️ El contenido del artículo es demasiado extenso para el modelo. Intenta reducir su tamaño.")
         return "ERROR: Texto muy largo para el modelo."
 
@@ -59,7 +62,7 @@ Por favor, {objetivo_prompt} y genera un informe profesional para revisión por 
         model="gpt-4-turbo",
         messages=[{"role": "user", "content": prompt}],
         temperature=0.3,
-        max_tokens=MAX_OUTPUT_TOKENS
+        max_tokens=3000
     )
     return respuesta.choices[0].message.content
 
