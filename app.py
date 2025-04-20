@@ -82,8 +82,7 @@ def generar_pdf(nombre_archivo, contenido, seccion):
     y -= 30
 
     c.setFont("Helvetica", 10)
-    for linea in contenido.split('
-'):
+    for linea in contenido.split('\n')):
         for fragmento in [linea[i:i+100] for i in range(0, len(linea), 100)]:
             if y < 40:
                 c.showPage()
@@ -159,6 +158,4 @@ if st.session_state["historial_respuestas"]:
     st.subheader("📚 Historial de preguntas y respuestas")
     for i, (q, r) in enumerate(st.session_state["historial_respuestas"]):
         st.markdown(f"**{i+1}. Pregunta:** {q}")
-        st.markdown(f"🧠 {r}")
-
         st.markdown(f"🧠 {r}")
