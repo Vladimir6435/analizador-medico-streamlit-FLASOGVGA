@@ -6,7 +6,7 @@ from openai import OpenAI
 client = OpenAI(api_key=st.secrets["openai_api_key"])
 
 # --- PARÁMETROS GENERALES ---
-MAX_CARACTERES = 30000  # Límite aproximado para gpt-4-turbo (~7000 tokens)
+MAX_CARACTERES = 90000  # Límite aproximado para gpt-4-turbo (~7000 tokens)
 
 # --- EXTRACCIÓN DE TEXTO DE PDF ---
 def extract_text_from_pdf(uploaded_file):
@@ -38,7 +38,7 @@ Incluye solo lo que corresponda a la sección seleccionada si así se indica.
         model="gpt-4-turbo",
         messages=[{"role": "user", "content": prompt}],
         temperature=0.3,
-        max_tokens=3000
+        max_tokens=5000
     )
     return respuesta.choices[0].message.content
 
