@@ -2,8 +2,9 @@ import streamlit as st
 import fitz  # PyMuPDF
 from openai import OpenAI
 from datetime import datetime
-from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 import io
 import tiktoken
 
@@ -49,6 +50,7 @@ Tienes a continuación el contenido de un artículo científico extraído de un 
 {texto_total}
 
 Por favor, {objetivo_prompt} y genera un informe profesional para revisión por especialistas clínicos. El informe debe estar estructurado, enfocado en evidencia médica clara, y ser útil para discusión académica o aplicación clínica.
+Además, si identificas condiciones como preeclampsia, restricción del crecimiento intrauterino (RCIU), diabetes gestacional, muerte fetal intrauterina, hipertensión crónica, anomalías congénitas o cualquier otra complicación materno-fetal significativa, destaca estos hallazgos en negrita, con énfasis clínico y, si es posible, ofrece recomendaciones o alertas para el lector.
 """
 
     n_tokens = contar_tokens(prompt)
@@ -67,131 +69,63 @@ Por favor, {objetivo_prompt} y genera un informe profesional para revisión por 
     return respuesta.choices[0].message.content
 
 def generar_pdf(nombre_archivo, contenido, seccion):
+    condiciones_detectadas = []
+    condiciones_clave = ["preeclampsia", "rciu", "restricción del crecimiento", "diabetes gestacional", "anomalías fetales", "síndrome hipertensivo", "muerte fetal"]
     buffer = io.BytesIO()
-    c = canvas.Canvas(buffer, pagesize=A4)
-    width, height = A4
-    y = height - 80
+    doc = SimpleDocTemplate(buffer, pagesize=A4)
+    styles = getSampleStyleSheet()
+    story = []
 
-    c.setFont("Helvetica-Bold", 14)
-    c.drawString(50, y, "Análisis de Literatura Médica FLASOG 2025")
-    y -= 25
+    story.append(Paragraph("Análisis de Literatura Médica FLASOG 2025", styles['Title']))
+    story.append(Spacer(1, 12))
+    story.append(Paragraph(f"Título del artículo: {nombre_archivo}", styles['Normal']))
+    story.append(Paragraph(f"Fecha de análisis: {datetime.today().strftime('%Y-%m-%d')}", styles['Normal']))
+    story.append(Paragraph(f"Sección analizada: {seccion}", styles['Normal']))
+    story.append(Spacer(1, 12))
 
-    c.setFont("Helvetica", 12)
-    c.drawString(50, y, f"Título del artículo: {nombre_archivo}")
-    y -= 20
-    c.drawString(50, y, f"Fecha de análisis: {datetime.today().strftime('%Y-%m-%d')}")
-    y -= 20
-    c.drawString(50, y, f"Sección analizada: {seccion}")
-    y -= 30
+    story.append(Paragraph("<b>Índice clínico de condiciones detectadas:</b>", styles['Heading3']))
+    story.append(Spacer(1, 6))
+    for palabra in condiciones_clave:
+        if palabra in contenido.lower():
+            condiciones_detectadas.append(palabra)
+            story.append(Paragraph(f"- {palabra.capitalize()}", styles['Normal']))
+    story.append(Spacer(1, 12))
 
-    c.setFont("Helvetica", 10)
     for linea in contenido.split('\n'):
-        for fragmento in [linea[i:i+100] for i in range(0, len(linea), 100)]:
-            if y < 40:
-                c.showPage()
-                y = height - 60
-                c.setFont("Helvetica", 10)
-            c.drawString(50, y, fragmento)
-            y -= 14
+        if any(palabra in linea.lower() for palabra in condiciones_clave):
+            story.append(Paragraph(f"<b>{linea}</b>", styles['BodyText']))
+        else:
+            story.append(Paragraph(linea, styles['BodyText']))
+        story.append(Spacer(1, 6))
 
-    c.save()
+    doc.build(story)
     buffer.seek(0)
     return buffer
 
 def generar_pdf_combinado(informes):
+    condiciones_clave = ["preeclampsia", "rciu", "restricción del crecimiento", "diabetes gestacional", "anomalías fetales", "síndrome hipertensivo", "muerte fetal"]
     buffer = io.BytesIO()
-    c = canvas.Canvas(buffer, pagesize=A4)
-    width, height = A4
-    y = height - 80
+    doc = SimpleDocTemplate(buffer, pagesize=A4)
+    styles = getSampleStyleSheet()
+    story = [Paragraph("Análisis Combinado - FLASOG 2025", styles['Title']), Spacer(1, 12)]
 
-    c.setFont("Helvetica-Bold", 16)
-    c.drawString(50, y, "Análisis Combinado - FLASOG 2025")
-    y -= 40
-
-    c.setFont("Helvetica", 10)
+    story.append(Paragraph("<b>Índice clínico global:</b>", styles['Heading3']))
     for nombre_archivo, contenido in informes.items():
-        c.setFont("Helvetica-Bold", 12)
-        c.drawString(50, y, f"Artículo: {nombre_archivo}")
-        y -= 20
-        c.setFont("Helvetica", 10)
-        for linea in contenido.split('\n'):
-            for fragmento in [linea[i:i+100] for i in range(0, len(linea), 100)]:
-                if y < 40:
-                    c.showPage()
-                    y = height - 60
-                    c.setFont("Helvetica", 10)
-                c.drawString(50, y, fragmento)
-                y -= 14
-        y -= 20
+        condiciones_detectadas = [cond for cond in condiciones_clave if cond in contenido.lower()]
+        if condiciones_detectadas:
+            story.append(Paragraph(f'<a href="#{nombre_archivo}"><u>{nombre_archivo}</u></a>', styles['Normal']))
+            for cond in condiciones_detectadas:
+                story.append(Paragraph(f"- {cond.capitalize()}", styles['Normal']))
+    story.append(Spacer(1, 12))
 
-    c.save()
+    for nombre_archivo, contenido in informes.items():
+        story.append(Paragraph(f'<a name="{nombre_archivo}"></a><b>Artículo: {nombre_archivo}</b>', styles['Heading2']))
+        story.append(Spacer(1, 6))
+        for linea in contenido.split('\n'):
+            story.append(Paragraph(linea, styles['BodyText']))
+            story.append(Spacer(1, 6))
+        story.append(Spacer(1, 12))
+
+    doc.build(story)
     buffer.seek(0)
     return buffer
-
-st.set_page_config(page_title="FLASOG 2025 - Análisis de Literatura Médica", layout="wide")
-st.title("📘 Análisis de Literatura Médica FLASOG 2025")
-st.markdown("### Suba uno o más artículos PDF para generar informes clínicos independientes")
-
-uploaded_files = st.file_uploader("📄 Sube tus archivos PDF", type="pdf", accept_multiple_files=True)
-seccion_objetivo = st.radio("¿Qué sección deseas analizar?",
-                            ["Todo el artículo", "Metodología", "Resultados", "Conclusiones"], index=0)
-
-if uploaded_files:
-    for archivo in uploaded_files:
-        nombre = archivo.name
-        texto = extract_text_from_pdf(archivo)
-        st.markdown(f"""---\n### 📄 Informe para: `{nombre}`""")
-        st.info(f"📏 Caracteres extraídos: {len(texto)}")
-
-        if len(texto) > MAX_CARACTERES_POR_PDF:
-            st.warning("⚠️ Recortando texto a 70,000 caracteres.")
-            texto = texto[:MAX_CARACTERES_POR_PDF]
-
-        if st.button(f"🧠 Analizar `{nombre}`"):
-            with st.spinner("Generando informe clínico..."):
-                resultado = generar_analisis_clinico(texto, seccion_objetivo)
-                st.session_state["analisis_clinicos"][nombre] = resultado
-
-        if nombre in st.session_state["analisis_clinicos"]:
-            st.subheader("📝 Informe clínico generado:")
-            st.write(st.session_state["analisis_clinicos"][nombre])
-
-            pdf_bytes = generar_pdf(nombre, st.session_state["analisis_clinicos"][nombre], seccion_objetivo)
-            st.download_button("📄 Descargar informe en PDF", pdf_bytes, file_name=f"{nombre}_informe.pdf")
-
-    if st.session_state["analisis_clinicos"]:
-        st.markdown("---")
-        st.subheader("📄 Descargar informe combinado")
-        pdf_combinado = generar_pdf_combinado(st.session_state["analisis_clinicos"])
-        st.download_button("📥 Descargar PDF combinado", pdf_combinado, file_name="informe_completo_FLASOG_2025.pdf")
-
-st.markdown("---")
-st.subheader("💬 Preguntas clínicas personalizadas")
-
-pregunta = st.text_input("Haz una pregunta sobre los artículos analizados:")
-
-if st.button("❓ Responder con IA"):
-    if pregunta.strip():
-        contexto = "\n\n".join(st.session_state["analisis_clinicos"].values())
-        with st.spinner("Buscando respuesta..."):
-            prompt = f"""Actúa como médico materno-fetal. Usa el siguiente contexto clínico para responder:
-
-{contexto}
-
-PREGUNTA: {pregunta}
-"""
-            respuesta = client.chat.completions.create(
-                model="gpt-4-turbo",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.3,
-                max_tokens=1500
-            ).choices[0].message.content
-            st.session_state["historial_respuestas"].append((pregunta, respuesta))
-    else:
-        st.warning("Escribe una pregunta válida.")
-
-if st.session_state["historial_respuestas"]:
-    st.subheader("📚 Historial de preguntas y respuestas")
-    for i, (q, r) in enumerate(st.session_state["historial_respuestas"]):
-        st.markdown(f"**{i+1}. Pregunta:** {q}")
-        st.markdown(f"🧠 {r}")
