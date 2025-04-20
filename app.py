@@ -5,12 +5,22 @@ from datetime import datetime
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
 import io
+
 # Configuración API
 openai.api_key = st.secrets["openai_api_key"]
 
 # Límite de caracteres por archivo
 MAX_CARACTERES_POR_PDF = 70000
 MAX_OUTPUT_TOKENS = 6000
+
+# Estado inicial para informes y chat
+if "analisis_clinicos" not in st.session_state:
+    st.session_state["analisis_clinicos"] = {}
+
+if "historial_respuestas" not in st.session_state:
+    st.session_state["historial_respuestas"] = []
+
+# Función para extraer texto de PDF
 def extract_text_from_pdf(uploaded_file):
     with fitz.open(stream=uploaded_file.read(), filetype="pdf") as doc:
         text = ""
@@ -22,6 +32,7 @@ def extract_text_from_pdf(uploaded_file):
             text += clean + "\n\n"
     return text
 
+# Función para generar análisis clínico
 def generar_analisis_clinico(texto_total, seccion_objetivo):
     if seccion_objetivo == "Todo el artículo":
         objetivo_prompt = "analiza el artículo completo"
@@ -46,6 +57,7 @@ Por favor, {objetivo_prompt} y genera un informe profesional para revisión por 
     )
     return respuesta.choices[0].message.content
 
+# Función para exportar informe en PDF
 def generar_pdf(nombre_archivo, contenido, seccion):
     buffer = io.BytesIO()
     c = canvas.Canvas(buffer, pagesize=A4)
@@ -77,17 +89,15 @@ def generar_pdf(nombre_archivo, contenido, seccion):
     c.save()
     buffer.seek(0)
     return buffer
+
+# Interfaz principal
 st.set_page_config(page_title="FLASOG 2025 - Análisis de Literatura Médica", layout="wide")
 st.title("📘 Análisis de Literatura Médica FLASOG 2025")
 st.markdown("### Suba uno o más artículos PDF para generar informes clínicos independientes")
 
 uploaded_files = st.file_uploader("📄 Sube tus archivos PDF", type="pdf", accept_multiple_files=True)
-
 seccion_objetivo = st.radio("¿Qué sección deseas analizar?",
                             ["Todo el artículo", "Metodología", "Resultados", "Conclusiones"], index=0)
-
-if "historial_respuestas" not in st.session_state:
-    st.session_state["historial_respuestas"] = []
 
 if uploaded_files:
     for archivo in uploaded_files:
@@ -103,25 +113,31 @@ if uploaded_files:
         if st.button(f"🧠 Analizar `{nombre}`"):
             with st.spinner("Generando informe clínico..."):
                 resultado = generar_analisis_clinico(texto, seccion_objetivo)
-                st.session_state[f"analisis_{nombre}"] = resultado
+                st.session_state["analisis_clinicos"][nombre] = resultado
 
-        if f"analisis_{nombre}" in st.session_state:
+        if nombre in st.session_state["analisis_clinicos"]:
             st.subheader("📝 Informe clínico generado:")
-            st.write(st.session_state[f"analisis_{nombre}"])
+            st.write(st.session_state["analisis_clinicos"][nombre])
 
-            pdf_bytes = generar_pdf(nombre, st.session_state[f"analisis_{nombre}"], seccion_objetivo)
-            st.download_button("💾 Descargar informe en PDF", pdf_bytes, file_name=f"{nombre}_informe.pdf")
+            pdf_bytes = generar_pdf(nombre, st.session_state["analisis_clinicos"][nombre], seccion_objetivo)
+            st.download_button("📄 Descargar informe en PDF", pdf_bytes, file_name=f"{nombre}_informe.pdf")
+
+# Sección de preguntas clínicas
 st.markdown("---")
 st.subheader("💬 Preguntas clínicas personalizadas")
 
-pregunta = st.text_input("Haz una pregunta sobre el contenido clínico:")
+pregunta = st.text_input("Haz una pregunta sobre los artículos analizados:")
 
 if st.button("❓ Responder con IA"):
     if pregunta.strip():
+        contexto = "\n\n".join(st.session_state["analisis_clinicos"].values())
         with st.spinner("Buscando respuesta..."):
-            prompt = f"""Responde como médico materno-fetal. Usa el contexto de los artículos analizados.
+            prompt = f"""Actúa como médico materno-fetal. Usa el siguiente contexto clínico para responder:
 
-PREGUNTA: {pregunta}"""
+{contexto}
+
+PREGUNTA: {pregunta}
+"""
             respuesta = openai.ChatCompletion.create(
                 model="gpt-4-turbo",
                 messages=[{"role": "user", "content": prompt}],
@@ -132,8 +148,10 @@ PREGUNTA: {pregunta}"""
     else:
         st.warning("Escribe una pregunta válida.")
 
+# Mostrar historial tipo chat
 if st.session_state["historial_respuestas"]:
     st.subheader("📚 Historial de preguntas y respuestas")
     for i, (q, r) in enumerate(st.session_state["historial_respuestas"]):
         st.markdown(f"**{i+1}. Pregunta:** {q}")
-        st.markdown(f"> {r}")
+        st.markdown(f"🧠 {r}")
+
