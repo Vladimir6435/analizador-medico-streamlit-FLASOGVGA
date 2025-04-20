@@ -25,6 +25,11 @@ def generar_analisis_clinico(texto_total, seccion_objetivo):
         objetivo_prompt = f"analiza exclusivamente la sección de {seccion_objetivo.lower()}"
 
     prompt = f"""
+
+    # --- DEBUG: Mostrar parte del prompt en pantalla ---
+st.text("------ PROMPT DEBUG ------")
+st.text_area("Prompt que será enviado al modelo:", prompt[:4000])
+
 Actúa como médico especialista en medicina materno-fetal.
 
 Tienes a continuación el contenido de un artículo científico extraído de un PDF:
