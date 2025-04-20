@@ -11,7 +11,7 @@ import tiktoken
 client = OpenAI(api_key=st.secrets["openai_api_key"])
 
 MAX_CARACTERES_POR_PDF = 70000
-MAX_OUTPUT_TOKENS = 3000
+MAX_OUTPUT_TOKENS = 6000
 MAX_INPUT_TOKENS = 120000
 
 if "analisis_clinicos" not in st.session_state:
@@ -83,7 +83,6 @@ def generar_pdf(nombre_archivo, contenido, seccion):
 
     c.setFont("Helvetica", 10)
     for linea in contenido.split('\n'):
-
         for fragmento in [linea[i:i+100] for i in range(0, len(linea), 100)]:
             if y < 40:
                 c.showPage()
@@ -91,6 +90,36 @@ def generar_pdf(nombre_archivo, contenido, seccion):
                 c.setFont("Helvetica", 10)
             c.drawString(50, y, fragmento)
             y -= 14
+
+    c.save()
+    buffer.seek(0)
+    return buffer
+
+def generar_pdf_combinado(informes):
+    buffer = io.BytesIO()
+    c = canvas.Canvas(buffer, pagesize=A4)
+    width, height = A4
+    y = height - 80
+
+    c.setFont("Helvetica-Bold", 16)
+    c.drawString(50, y, "Análisis Combinado - FLASOG 2025")
+    y -= 40
+
+    c.setFont("Helvetica", 10)
+    for nombre_archivo, contenido in informes.items():
+        c.setFont("Helvetica-Bold", 12)
+        c.drawString(50, y, f"Artículo: {nombre_archivo}")
+        y -= 20
+        c.setFont("Helvetica", 10)
+        for linea in contenido.split('\n'):
+            for fragmento in [linea[i:i+100] for i in range(0, len(linea), 100)]:
+                if y < 40:
+                    c.showPage()
+                    y = height - 60
+                    c.setFont("Helvetica", 10)
+                c.drawString(50, y, fragmento)
+                y -= 14
+        y -= 20
 
     c.save()
     buffer.seek(0)
@@ -108,8 +137,7 @@ if uploaded_files:
     for archivo in uploaded_files:
         nombre = archivo.name
         texto = extract_text_from_pdf(archivo)
-        st.markdown(f"""---
-### 📄 Informe para: `{nombre}`""")
+        st.markdown(f"""---\n### 📄 Informe para: `{nombre}`""")
         st.info(f"📏 Caracteres extraídos: {len(texto)}")
 
         if len(texto) > MAX_CARACTERES_POR_PDF:
@@ -128,6 +156,12 @@ if uploaded_files:
             pdf_bytes = generar_pdf(nombre, st.session_state["analisis_clinicos"][nombre], seccion_objetivo)
             st.download_button("📄 Descargar informe en PDF", pdf_bytes, file_name=f"{nombre}_informe.pdf")
 
+    if st.session_state["analisis_clinicos"]:
+        st.markdown("---")
+        st.subheader("📄 Descargar informe combinado")
+        pdf_combinado = generar_pdf_combinado(st.session_state["analisis_clinicos"])
+        st.download_button("📥 Descargar PDF combinado", pdf_combinado, file_name="informe_completo_FLASOG_2025.pdf")
+
 st.markdown("---")
 st.subheader("💬 Preguntas clínicas personalizadas")
 
@@ -136,8 +170,6 @@ pregunta = st.text_input("Haz una pregunta sobre los artículos analizados:")
 if st.button("❓ Responder con IA"):
     if pregunta.strip():
         contexto = "\n\n".join(st.session_state["analisis_clinicos"].values())
-
-
         with st.spinner("Buscando respuesta..."):
             prompt = f"""Actúa como médico materno-fetal. Usa el siguiente contexto clínico para responder:
 
