@@ -1,22 +1,27 @@
 import streamlit as st
 import fitz  # PyMuPDF
-from openai import OpenAI
+import openai
+from datetime import datetime
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import A4
+import io
+# Configuración API
+openai.api_key = st.secrets["openai_api_key"]
 
-# Inicializar cliente OpenAI
-client = OpenAI(api_key=st.secrets["openai_api_key"])
-
-MAX_CARACTERES = 30000  # Límite seguro (~8k tokens)
-MAX_OUTPUT_TOKENS = 3000
-
-# --- Extraer texto desde PDF ---
+# Límite de caracteres por archivo
+MAX_CARACTERES_POR_PDF = 70000
+MAX_OUTPUT_TOKENS = 6000
 def extract_text_from_pdf(uploaded_file):
     with fitz.open(stream=uploaded_file.read(), filetype="pdf") as doc:
         text = ""
         for page in doc:
-            text += page.get_text()
+            raw = page.get_text("text")
+            clean = raw.replace('\x00', ' ').replace('\u2028', ' ')
+            clean = clean.encode("utf-8", "ignore").decode("utf-8", "ignore")
+            clean = ' '.join(clean.split())
+            text += clean + "\n\n"
     return text
 
-# --- Análisis clínico IA ---
 def generar_analisis_clinico(texto_total, seccion_objetivo):
     if seccion_objetivo == "Todo el artículo":
         objetivo_prompt = "analiza el artículo completo"
@@ -32,7 +37,8 @@ Tienes a continuación el contenido de un artículo científico extraído de un 
 
 Por favor, {objetivo_prompt} y genera un informe profesional para revisión por especialistas clínicos. El informe debe estar estructurado, enfocado en evidencia médica clara, y ser útil para discusión académica o aplicación clínica.
 """
-    respuesta = client.chat.completions.create(
+
+    respuesta = openai.ChatCompletion.create(
         model="gpt-4-turbo",
         messages=[{"role": "user", "content": prompt}],
         temperature=0.3,
@@ -40,70 +46,94 @@ Por favor, {objetivo_prompt} y genera un informe profesional para revisión por 
     )
     return respuesta.choices[0].message.content
 
-# --- Preguntas personalizadas ---
-def responder_pregunta(texto_total, pregunta):
-    prompt = f"""
-Eres un asistente clínico experto en medicina materno-fetal.
+def generar_pdf(nombre_archivo, contenido, seccion):
+    buffer = io.BytesIO()
+    c = canvas.Canvas(buffer, pagesize=A4)
+    width, height = A4
+    y = height - 80
 
-Con base en el siguiente contenido médico extraído de artículos científicos:
+    c.setFont("Helvetica-Bold", 14)
+    c.drawString(50, y, "Análisis de Literatura Médica FLASOG 2025")
+    y -= 25
 
-{texto_total}
+    c.setFont("Helvetica", 12)
+    c.drawString(50, y, f"Título del artículo: {nombre_archivo}")
+    y -= 20
+    c.drawString(50, y, f"Fecha de análisis: {datetime.today().strftime('%Y-%m-%d')}")
+    y -= 20
+    c.drawString(50, y, f"Sección analizada: {seccion}")
+    y -= 30
 
-Responde con precisión y lenguaje médico claro:
+    c.setFont("Helvetica", 10)
+    for linea in contenido.split('\n'):
+        for fragmento in [linea[i:i+100] for i in range(0, len(linea), 100)]:
+            if y < 40:
+                c.showPage()
+                y = height - 60
+                c.setFont("Helvetica", 10)
+            c.drawString(50, y, fragmento)
+            y -= 14
 
-PREGUNTA: {pregunta}
-"""
-    respuesta = client.chat.completions.create(
-        model="gpt-4-turbo",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.3,
-        max_tokens=3000
-    )
-    return respuesta.choices[0].message.content
-
-# --- Interfaz principal ---
-st.set_page_config(page_title="FLASOG 2025 - Análisis de Literatura Médica", layout="centered")
-
+    c.save()
+    buffer.seek(0)
+    return buffer
+st.set_page_config(page_title="FLASOG 2025 - Análisis de Literatura Médica", layout="wide")
 st.title("📘 Análisis de Literatura Médica FLASOG 2025")
-st.markdown("### 🧠 IA para lectura crítica automatizada")
-st.info("Texto recortado a 30,000 caracteres para máxima compatibilidad con OpenAI")
+st.markdown("### Suba uno o más artículos PDF para generar informes clínicos independientes")
 
-uploaded_files = st.file_uploader("📄 Sube uno o más artículos médicos en PDF", type="pdf", accept_multiple_files=True)
+uploaded_files = st.file_uploader("📄 Sube tus archivos PDF", type="pdf", accept_multiple_files=True)
 
-seccion_objetivo = st.radio("¿Qué sección deseas analizar?", 
+seccion_objetivo = st.radio("¿Qué sección deseas analizar?",
                             ["Todo el artículo", "Metodología", "Resultados", "Conclusiones"], index=0)
 
-texto_total = ""
+if "historial_respuestas" not in st.session_state:
+    st.session_state["historial_respuestas"] = []
 
 if uploaded_files:
     for archivo in uploaded_files:
-        texto_total += extract_text_from_pdf(archivo) + "\n\n"
+        nombre = archivo.name
+        texto = extract_text_from_pdf(archivo)
+        st.markdown(f"---\n### 📄 Informe para: `{nombre}`")
+        st.info(f"📏 Caracteres extraídos: {len(texto)}")
 
-    st.info(f"📏 Caracteres cargados: {len(texto_total)}")
+        if len(texto) > MAX_CARACTERES_POR_PDF:
+            st.warning("⚠️ Recortando texto a 70,000 caracteres.")
+            texto = texto[:MAX_CARACTERES_POR_PDF]
 
-    if len(texto_total) > MAX_CARACTERES:
-        st.warning("⚠️ El texto fue recortado a 30,000 caracteres para cumplir con el límite del modelo.")
-        texto_total = texto_total[:MAX_CARACTERES]
-        st.info(f"✂️ Texto recortado a {len(texto_total)} caracteres.")
+        if st.button(f"🧠 Analizar `{nombre}`"):
+            with st.spinner("Generando informe clínico..."):
+                resultado = generar_analisis_clinico(texto, seccion_objetivo)
+                st.session_state[f"analisis_{nombre}"] = resultado
 
-    if st.button("📑 Generar análisis clínico"):
-        with st.spinner("🧠 Analizando con IA..."):
-            resultado = generar_analisis_clinico(texto_total, seccion_objetivo)
+        if f"analisis_{nombre}" in st.session_state:
             st.subheader("📝 Informe clínico generado:")
-            st.write(resultado)
-            st.download_button("💾 Descargar informe (.txt)", resultado, file_name="informe_clinico.txt")
+            st.write(st.session_state[f"analisis_{nombre}"])
 
-    st.markdown("---")
-    st.subheader("💬 Pregunta personalizada sobre el artículo")
+            pdf_bytes = generar_pdf(nombre, st.session_state[f"analisis_{nombre}"], seccion_objetivo)
+            st.download_button("💾 Descargar informe en PDF", pdf_bytes, file_name=f"{nombre}_informe.pdf")
+st.markdown("---")
+st.subheader("💬 Preguntas clínicas personalizadas")
 
-    pregunta = st.text_input("Escribe tu pregunta aquí:")
-    if st.button("❓ Obtener respuesta"):
-        if pregunta.strip():
-            with st.spinner("💬 Generando respuesta..."):
-                respuesta = responder_pregunta(texto_total, pregunta)
-                st.markdown("### ✅ Respuesta basada en el contenido:")
-                st.write(respuesta)
-        else:
-            st.warning("Por favor, escribe una pregunta válida.")
+pregunta = st.text_input("Haz una pregunta sobre el contenido clínico:")
 
+if st.button("❓ Responder con IA"):
+    if pregunta.strip():
+        with st.spinner("Buscando respuesta..."):
+            prompt = f"""Responde como médico materno-fetal. Usa el contexto de los artículos analizados.
 
+PREGUNTA: {pregunta}"""
+            respuesta = openai.ChatCompletion.create(
+                model="gpt-4-turbo",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.3,
+                max_tokens=1500
+            ).choices[0].message.content
+            st.session_state["historial_respuestas"].append((pregunta, respuesta))
+    else:
+        st.warning("Escribe una pregunta válida.")
+
+if st.session_state["historial_respuestas"]:
+    st.subheader("📚 Historial de preguntas y respuestas")
+    for i, (q, r) in enumerate(st.session_state["historial_respuestas"]):
+        st.markdown(f"**{i+1}. Pregunta:** {q}")
+        st.markdown(f"> {r}")
