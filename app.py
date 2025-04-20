@@ -2,13 +2,13 @@ import streamlit as st
 import fitz  # PyMuPDF
 from openai import OpenAI
 
-# Crear cliente OpenAI
+# Crear cliente OpenAI con clave segura
 client = OpenAI(api_key=st.secrets["openai_api_key"])
 
-# --- PARÁMETROS GENERALES ---
-MAX_CARACTERES = 90000  # Límite aproximado para gpt-4-turbo (~7000 tokens)
+# Hasta ~400,000 caracteres (~100,000 tokens)
+MAX_CARACTERES = 400000
 
-# --- EXTRACCIÓN DE TEXTO DE PDF ---
+# --- Función para extraer texto desde PDF ---
 def extract_text_from_pdf(uploaded_file):
     with fitz.open(stream=uploaded_file.read(), filetype="pdf") as doc:
         text = ""
@@ -16,7 +16,7 @@ def extract_text_from_pdf(uploaded_file):
             text += page.get_text()
     return text
 
-# --- GENERAR ANÁLISIS CLÍNICO POR SECCIÓN ---
+# --- Función para análisis clínico estructurado ---
 def generar_analisis_clinico(texto_total, seccion_objetivo):
     if seccion_objetivo == "Todo el artículo":
         objetivo_prompt = "analiza el artículo completo"
@@ -38,22 +38,43 @@ Incluye solo lo que corresponda a la sección seleccionada si así se indica.
         model="gpt-4-turbo",
         messages=[{"role": "user", "content": prompt}],
         temperature=0.3,
-        max_tokens=5000
+        max_tokens=6000  # mayor capacidad de respuesta
     )
     return respuesta.choices[0].message.content
 
-# --- STREAMLIT UI ---
+# --- Función para responder preguntas personalizadas ---
+def responder_pregunta(texto_total, pregunta):
+    prompt = f"""
+Eres un asistente clínico experto en medicina materno-fetal.
+
+Con base en el siguiente contenido médico extraído de varios artículos científicos:
+
+{texto_total}
+
+Responde la siguiente pregunta del usuario con base en la evidencia presentada:
+
+PREGUNTA: {pregunta}
+"""
+    respuesta = client.chat.completions.create(
+        model="gpt-4-turbo",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.3,
+        max_tokens=3000
+    )
+    return respuesta.choices[0].message.content
+
+# --- Interfaz principal ---
 st.set_page_config(page_title="FLASOG 2025 - Análisis de Literatura Médica", layout="centered")
 
 st.title("📘 Análisis de Literatura Médica FLASOG 2025")
 st.markdown("### 🧠 Inteligencia Artificial para apoyo en lectura crítica de artículos médicos")
-st.markdown("Este sistema usa el modelo `gpt-4-turbo` para analizar artículos clínicos y generar reportes estructurados.")
-st.info("**Prompt clínico activo:** análisis estructurado por sección (Metodología, Resultados, Conclusiones)")
+st.markdown("Este sistema usa el modelo `gpt-4-turbo` con contexto extendido para analizar artículos clínicos extensos.")
+st.info("**Prompt clínico activo:** análisis por sección seleccionada (Metodología, Resultados, Conclusiones o todo el artículo)")
 
-# --- SUBIR ARCHIVOS PDF ---
+# --- Cargar artículos PDF ---
 uploaded_files = st.file_uploader("📄 Sube uno o más artículos médicos en PDF", type="pdf", accept_multiple_files=True)
 
-# --- ELEGIR SECCIÓN A ANALIZAR ---
+# --- Elegir sección objetivo ---
 st.markdown("### 🧪 Selecciona la sección que deseas analizar:")
 seccion_objetivo = st.radio(
     "¿Qué sección deseas que la IA analice?", 
@@ -61,12 +82,12 @@ seccion_objetivo = st.radio(
     index=0
 )
 
-# --- PROCESAMIENTO ---
+texto_total = ""
+
 if uploaded_files:
     st.markdown("---")
     st.subheader("🔍 Análisis clínico")
 
-    texto_total = ""
     for archivo in uploaded_files:
         texto_total += extract_text_from_pdf(archivo) + "\n\n"
 
@@ -74,9 +95,9 @@ if uploaded_files:
     st.info(f"📏 Caracteres cargados: {num_caracteres}")
 
     if num_caracteres > MAX_CARACTERES:
-        st.warning("⚠️ El texto fue recortado para ajustarse al límite del modelo.")
+        st.warning("⚠️ El texto fue recortado para ajustarse al límite del modelo (máx. 400,000 caracteres / ~100,000 tokens).")
         texto_total = texto_total[:MAX_CARACTERES]
-        st.info(f"✂️ Texto reducido a {len(texto_total)} caracteres.")
+        st.info(f"✂️ Texto recortado a {len(texto_total)} caracteres.")
 
     if st.button("📑 Generar análisis clínico"):
         with st.spinner("🧠 Analizando con IA..."):
@@ -84,3 +105,16 @@ if uploaded_files:
             st.subheader("📝 Informe clínico generado:")
             st.write(resultado)
             st.download_button("💾 Descargar informe como .txt", resultado, file_name="informe_clinico.txt")
+
+    st.markdown("---")
+    st.subheader("💬 Realiza una pregunta personalizada sobre los artículos")
+
+    pregunta = st.text_input("Escribe tu pregunta aquí:")
+    if st.button("❓ Obtener respuesta de IA"):
+        if pregunta.strip() != "":
+            with st.spinner("🤖 Generando respuesta..."):
+                respuesta = responder_pregunta(texto_total, pregunta)
+                st.markdown("### ✅ Respuesta basada en los artículos:")
+                st.write(respuesta)
+        else:
+            st.warning("Por favor, escribe una pregunta válida.")
