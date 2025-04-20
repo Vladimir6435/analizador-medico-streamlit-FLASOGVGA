@@ -30,7 +30,7 @@ Realiza un análisis clínico estructurado:
 Usa lenguaje técnico claro dirigido a médicos gineco-obstetras.
 """
     respuesta = client.chat.completions.create(
-        model="gpt-4-turbo",
+        model="gpt-3.5-turbo",
         messages=[{"role": "user", "content": prompt}],
         temperature=0.3,
         max_tokens=2500
@@ -50,7 +50,7 @@ Responde la siguiente pregunta del usuario de forma clara y con base en la evide
 PREGUNTA: {pregunta}
 """
     respuesta = client.chat.completions.create(
-        model="gpt-4",
+        model="gpt-3.5-turbo",
         messages=[{"role": "user", "content": prompt}],
         temperature=0.3,
         max_tokens=1500
