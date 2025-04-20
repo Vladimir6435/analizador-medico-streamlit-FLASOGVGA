@@ -6,7 +6,7 @@ from openai import OpenAI
 client = OpenAI(api_key=st.secrets["openai_api_key"])
 
 # Configuración segura de longitud
-MAX_CARACTERES_ENTRADA = 350000  # ~80k tokens
+MAX_CARACTERES_ENTRADA = 250000  # ~80k tokens
 MAX_OUTPUT_TOKENS = 6000
 
 # --- Función para extraer texto desde PDF ---
