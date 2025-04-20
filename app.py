@@ -61,9 +61,34 @@ PREGUNTA: {pregunta}
     return respuesta.choices[0].message.content
 
 # Interfaz de usuario
-st.title("📊 Analizador Médico - Múltiples PDFs + Preguntas")
+import streamlit as st
+import fitz  # PyMuPDF
+from openai import OpenAI
 
-uploaded_files = st.file_uploader("📄 Sube artículos médicos en PDF", type="pdf", accept_multiple_files=True)
+client = OpenAI(api_key=st.secrets["openai_api_key"])
+
+# --- PARÁMETROS GENERALES ---
+MAX_CARACTERES = 30000  # Aumentado para gpt-4-turbo
+
+# --- INTERFAZ ---
+st.set_page_config(page_title="FLASOG 2025 - Análisis de Literatura Médica", layout="centered")
+
+st.title("📘 Análisis de Literatura Médica FLASOG 2025")
+st.markdown("### 🧠 Inteligencia Artificial para apoyo en lectura crítica de artículos médicos")
+st.markdown("Este sistema usa el modelo `gpt-4-turbo` para analizar artículos clínicos y generar reportes estructurados.")
+st.info("**Prompt clínico activo:** análisis estructurado por sección (Metodología, Resultados, Conclusiones)")
+
+# --- SELECCIÓN DE ARTÍCULOS ---
+uploaded_files = st.file_uploader("📄 Sube uno o más artículos médicos en PDF", type="pdf", accept_multiple_files=True)
+
+# --- SELECCIÓN DE SECCIÓN A ANALIZAR ---
+st.markdown("### 🧪 Selecciona la sección que deseas analizar:")
+seccion_objetivo = st.radio(
+    "¿Qué sección deseas que la IA analice?", 
+    ["Todo el artículo", "Metodología", "Resultados", "Conclusiones"], 
+    index=0
+)
+
 
 texto_total = ""
 
