@@ -1,13 +1,13 @@
 import streamlit as st
 import fitz  # PyMuPDF
-from openai import OpenAI
+import openai
 from datetime import datetime
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
 import io
 
-# Cliente moderno OpenAI
-client = OpenAI(api_key=st.secrets["openai_api_key"])
+# Configuración API
+openai.api_key = st.secrets["openai_api_key"]
 
 MAX_CARACTERES_POR_PDF = 70000
 MAX_OUTPUT_TOKENS = 6000
@@ -45,7 +45,7 @@ Tienes a continuación el contenido de un artículo científico extraído de un 
 Por favor, {objetivo_prompt} y genera un informe profesional para revisión por especialistas clínicos. El informe debe estar estructurado, enfocado en evidencia médica clara, y ser útil para discusión académica o aplicación clínica.
 """
 
-    respuesta = client.chat.completions.create(
+    respuesta = openai.ChatCompletion.create(
         model="gpt-4-turbo",
         messages=[{"role": "user", "content": prompt}],
         temperature=0.3,
@@ -131,7 +131,7 @@ if st.button("❓ Responder con IA"):
 
 PREGUNTA: {pregunta}
 """
-            respuesta = client.chat.completions.create(
+            respuesta = openai.ChatCompletion.create(
                 model="gpt-4-turbo",
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.3,
@@ -145,4 +145,6 @@ if st.session_state["historial_respuestas"]:
     st.subheader("📚 Historial de preguntas y respuestas")
     for i, (q, r) in enumerate(st.session_state["historial_respuestas"]):
         st.markdown(f"**{i+1}. Pregunta:** {q}")
+        st.markdown(f"🧠 {r}")
+
         st.markdown(f"🧠 {r}")
