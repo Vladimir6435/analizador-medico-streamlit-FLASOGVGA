@@ -1,4 +1,5 @@
 streamlit
+PyPDF2
+tiktoken>=0.6.0
 openai
-pymupdf
-reportlab
+fpdf
