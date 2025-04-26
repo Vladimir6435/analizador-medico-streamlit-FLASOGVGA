@@ -1,197 +1,146 @@
 import streamlit as st
-import fitz  # PyMuPDF
-from openai import OpenAI
-from datetime import datetime
-from reportlab.pdfgen import canvas
-from reportlab.lib.pagesizes import A4
-import io
+import os
 import tiktoken
+import openai
+from PyPDF2 import PdfReader, PdfWriter
+from fpdf import FPDF
+import tempfile
+import io
 
-# Configuración API moderna
-client = OpenAI(api_key=st.secrets["openai_api_key"])
+# Configuración de la página
+st.set_page_config(
+    page_title="Análisis de Literatura Médica FLASOG 2025 v3",
+    layout="wide"
+)
 
-MAX_CARACTERES_POR_PDF = 70000
-MAX_OUTPUT_TOKENS = 6000
-MAX_INPUT_TOKENS = 120000
+# Inicialización de estado
+def init_state():
+    if 'summaries' not in st.session_state:
+        st.session_state.summaries = {}        # {filename: summary}
+    if 'history' not in st.session_state:
+        st.session_state.history = {}          # {filename: [(user_msg, bot_resp), ...]}
+    if 'settings' not in st.session_state:
+        st.session_state.settings = {
+            'char_limit': 70000,
+            'model': 'gpt-4-turbo',
+            'sections': ['Objetivos', 'Metodología', 'Resultados', 'Conclusiones']
+        }
 
-if "analisis_clinicos" not in st.session_state:
-    st.session_state["analisis_clinicos"] = {}
+init_state()
 
-if "historial_respuestas" not in st.session_state:
-    st.session_state["historial_respuestas"] = []
-
-def contar_tokens(texto, modelo="gpt-4-turbo"):
-    enc = tiktoken.encoding_for_model(modelo)
-    return len(enc.encode(texto))
-
-def extract_text_from_pdf(uploaded_file):
-    with fitz.open(stream=uploaded_file.read(), filetype="pdf") as doc:
-        text = ""
-        for page in doc:
-            raw = page.get_text("text")
-            clean = raw.replace('\x00', ' ').replace('\u2028', ' ')
-            clean = clean.encode("utf-8", "ignore").decode("utf-8", "ignore")
-            clean = ' '.join(clean.split())
-            text += clean + "\n\n"
+# Funciones auxiliares
+def extract_text(file) -> str:
+    reader = PdfReader(file)
+    text = ''
+    for page in reader.pages:
+        text += (page.extract_text() or '') + '\n'
     return text
 
-def generar_analisis_clinico(texto_total, seccion_objetivo):
-    if seccion_objetivo == "Todo el artículo":
-        objetivo_prompt = "analiza el artículo completo"
-    else:
-        objetivo_prompt = f"analiza exclusivamente la sección de {seccion_objetivo.lower()}"
+def count_tokens(text: str, model: str) -> int:
+    enc = tiktoken.encoding_for_model(model)
+    return len(enc.encode(text))
 
-    prompt = f"""
-Actúa como médico especialista en medicina materno-fetal.
-
-Tienes a continuación el contenido de un artículo científico extraído de un PDF:
-
-{texto_total}
-
-Por favor, {objetivo_prompt} y genera un informe profesional para revisión por especialistas clínicos. El informe debe estar estructurado, enfocado en evidencia médica clara, y ser útil para discusión académica o aplicación clínica.
-"""
-
-    n_tokens = contar_tokens(prompt)
-    st.info(f"🧮 Tokens del prompt: {n_tokens}")
-
-    if n_tokens > MAX_INPUT_TOKENS:
-        st.error("⚠️ El contenido del artículo es demasiado extenso para el modelo. Intenta reducir su tamaño.")
-        return "ERROR: Texto muy largo para el modelo."
-
-    respuesta = client.chat.completions.create(
-        model="gpt-4-turbo",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.3,
-        max_tokens=3000
+def call_openai(messages) -> str:
+    openai.api_key = os.getenv('OPENAI_API_KEY')
+    resp = openai.ChatCompletion.create(
+        model=st.session_state.settings['model'],
+        messages=messages,
+        temperature=0.0,
+        max_tokens=1500
     )
-    return respuesta.choices[0].message.content
+    return resp.choices[0].message.content.strip()
 
-def generar_pdf(nombre_archivo, contenido, seccion):
-    buffer = io.BytesIO()
-    c = canvas.Canvas(buffer, pagesize=A4)
-    width, height = A4
-    y = height - 80
+def generate_pdf(text: str) -> bytes:
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font('Arial', size=12)
+    for line in text.split('\n'):
+        pdf.multi_cell(0, 8, line)
+    return pdf.output(dest='S').encode('latin-1')
 
-    c.setFont("Helvetica-Bold", 14)
-    c.drawString(50, y, "Análisis de Literatura Médica FLASOG 2025")
-    y -= 25
+def merge_pdfs(pdf_bytes_list) -> bytes:
+    writer = PdfWriter()
+    for pdf_bytes in pdf_bytes_list:
+        reader = PdfReader(io.BytesIO(pdf_bytes))
+        for page in reader.pages:
+            writer.add_page(page)
+    buf = io.BytesIO()
+    writer.write(buf)
+    return buf.getvalue()
 
-    c.setFont("Helvetica", 12)
-    c.drawString(50, y, f"Título del artículo: {nombre_archivo}")
-    y -= 20
-    c.drawString(50, y, f"Fecha de análisis: {datetime.today().strftime('%Y-%m-%d')}")
-    y -= 20
-    c.drawString(50, y, f"Sección analizada: {seccion}")
-    y -= 30
+# Interfaz
+st.title("📚 Análisis de Literatura Médica FLASOG 2025 v3")
+st.markdown(
+    "Sube archivos PDF y obtén resúmenes por sección y chat de seguimiento."
+)
 
-    c.setFont("Helvetica", 10)
-    for linea in contenido.split('\n'):
-        for fragmento in [linea[i:i+100] for i in range(0, len(linea), 100)]:
-            if y < 40:
-                c.showPage()
-                y = height - 60
-                c.setFont("Helvetica", 10)
-            c.drawString(50, y, fragmento)
-            y -= 14
+# Subida de archivos
+uploaded = st.file_uploader("Selecciona PDFs", type='pdf', accept_multiple_files=True)
 
-    c.save()
-    buffer.seek(0)
-    return buffer
+if uploaded:
+    for f in uploaded:
+        name = f.name
+        if name not in st.session_state.summaries:
+            raw = extract_text(f)
+            trimmed = raw[:st.session_state.settings['char_limit']]
+            system_prompt = (
+                "Eres un asistente especializado en medicina materno-fetal. "
+                "Divide el resumen en Objetivos, Metodología, Resultados y Conclusiones."
+            )
+            # Resumen inicial
+            summary = call_openai([
+                {'role': 'system', 'content': system_prompt},
+                {'role': 'user', 'content': trimmed}
+            ])
+            st.session_state.summaries[name] = summary
+            st.session_state.history[name] = []
 
-def generar_pdf_combinado(informes):
-    buffer = io.BytesIO()
-    c = canvas.Canvas(buffer, pagesize=A4)
-    width, height = A4
-    y = height - 80
+    # Selector de sección
+    tab1, tab2 = st.tabs(["Resúmenes", "Informe Combinado"])
 
-    c.setFont("Helvetica-Bold", 16)
-    c.drawString(50, y, "Análisis Combinado - FLASOG 2025")
-    y -= 40
+    with tab1:
+        for fname, summary in st.session_state.summaries.items():
+            st.subheader(f"{fname}")
+            # Mostrar filtro
+            opts = st.multiselect(
+                f"Secciones a mostrar ({fname})",
+                st.session_state.settings['sections'],
+                default=st.session_state.settings['sections']
+            )
+            # Mostrar solo secciones filtradas
+            for section in opts:
+                if section in summary:
+                    st.markdown(f"**{section}:**")
+                    part = summary.split(section + ":")[1].split("\n##")[0].strip()
+                    st.write(part)
 
-    c.setFont("Helvetica", 10)
-    for nombre_archivo, contenido in informes.items():
-        c.setFont("Helvetica-Bold", 12)
-        c.drawString(50, y, f"Artículo: {nombre_archivo}")
-        y -= 20
-        c.setFont("Helvetica", 10)
-        for linea in contenido.split('\n'):
-            for fragmento in [linea[i:i+100] for i in range(0, len(linea), 100)]:
-                if y < 40:
-                    c.showPage()
-                    y = height - 60
-                    c.setFont("Helvetica", 10)
-                c.drawString(50, y, fragmento)
-                y -= 14
-        y -= 20
+            # Chat de seguimiento
+            q = st.text_input(f"Pregunta de seguimiento para {fname}")
+            if q:
+                messages = [
+                    {'role': 'system', 'content': system_prompt},
+                    {'role': 'user', 'content': trimmed}
+                ]
+                # Incluir historial
+                for uq, ur in st.session_state.history[fname]:
+                    messages.append({'role': 'user', 'content': uq})
+                    messages.append({'role': 'assistant', 'content': ur})
+                messages.append({'role': 'user', 'content': q})
+                resp = call_openai(messages)
+                st.session_state.history[fname].append((q, resp))
+                st.write(f"**Bot:** {resp}")
 
-    c.save()
-    buffer.seek(0)
-    return buffer
-
-st.set_page_config(page_title="FLASOG 2025 - Análisis de Literatura Médica", layout="wide")
-st.title("📘 Análisis de Literatura Médica FLASOG 2025")
-st.markdown("### Suba uno o más artículos PDF para generar informes clínicos independientes")
-
-uploaded_files = st.file_uploader("📄 Sube tus archivos PDF", type="pdf", accept_multiple_files=True)
-seccion_objetivo = st.radio("¿Qué sección deseas analizar?",
-                            ["Todo el artículo", "Metodología", "Resultados", "Conclusiones"], index=0)
-
-if uploaded_files:
-    for archivo in uploaded_files:
-        nombre = archivo.name
-        texto = extract_text_from_pdf(archivo)
-        st.markdown(f"""---\n### 📄 Informe para: `{nombre}`""")
-        st.info(f"📏 Caracteres extraídos: {len(texto)}")
-
-        if len(texto) > MAX_CARACTERES_POR_PDF:
-            st.warning("⚠️ Recortando texto a 70,000 caracteres.")
-            texto = texto[:MAX_CARACTERES_POR_PDF]
-
-        if st.button(f"🧠 Analizar `{nombre}`"):
-            with st.spinner("Generando informe clínico..."):
-                resultado = generar_analisis_clinico(texto, seccion_objetivo)
-                st.session_state["analisis_clinicos"][nombre] = resultado
-
-        if nombre in st.session_state["analisis_clinicos"]:
-            st.subheader("📝 Informe clínico generado:")
-            st.write(st.session_state["analisis_clinicos"][nombre])
-
-            pdf_bytes = generar_pdf(nombre, st.session_state["analisis_clinicos"][nombre], seccion_objetivo)
-            st.download_button("📄 Descargar informe en PDF", pdf_bytes, file_name=f"{nombre}_informe.pdf")
-
-    if st.session_state["analisis_clinicos"]:
-        st.markdown("---")
-        st.subheader("📄 Descargar informe combinado")
-        pdf_combinado = generar_pdf_combinado(st.session_state["analisis_clinicos"])
-        st.download_button("📥 Descargar PDF combinado", pdf_combinado, file_name="informe_completo_FLASOG_2025.pdf")
-
-st.markdown("---")
-st.subheader("💬 Preguntas clínicas personalizadas")
-
-pregunta = st.text_input("Haz una pregunta sobre los artículos analizados:")
-
-if st.button("❓ Responder con IA"):
-    if pregunta.strip():
-        contexto = "\n\n".join(st.session_state["analisis_clinicos"].values())
-        with st.spinner("Buscando respuesta..."):
-            prompt = f"""Actúa como médico materno-fetal. Usa el siguiente contexto clínico para responder:
-
-{contexto}
-
-PREGUNTA: {pregunta}
-"""
-            respuesta = client.chat.completions.create(
-                model="gpt-4-turbo",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.3,
-                max_tokens=1500
-            ).choices[0].message.content
-            st.session_state["historial_respuestas"].append((pregunta, respuesta))
-    else:
-        st.warning("Escribe una pregunta válida.")
-
-if st.session_state["historial_respuestas"]:
-    st.subheader("📚 Historial de preguntas y respuestas")
-    for i, (q, r) in enumerate(st.session_state["historial_respuestas"]):
-        st.markdown(f"**{i+1}. Pregunta:** {q}")
-        st.markdown(f"🧠 {r}")
+    with tab2:
+        st.markdown("### Descargar Informe Combinado")
+        if st.button("Generar PDF combinado"):
+            bytes_list = []
+            for fname, text in st.session_state.summaries.items():
+                pdf_b = generate_pdf(text)
+                bytes_list.append(pdf_b)
+            combined = merge_pdfs(bytes_list)
+            st.download_button(
+                label="Descargar todo en un PDF",
+                data=combined,
+                file_name="informe_combinado.pdf",
+                mime="application/pdf"
+            )
